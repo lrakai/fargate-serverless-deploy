@@ -1,0 +1,749 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Deploy a containerized app to ECS using Fargate serverless backend",
+    "Parameters": {
+        "Region": {
+            "Type": "String",
+            "Default": "us-west-2"
+        }
+    },
+    "Mappings": {
+        "Subnets": {
+            "VPC": {
+                "CIDR": "10.10.10.0/24"
+            },
+            "Subnet1": {
+                "CIDR": "10.10.10.0/25"
+            },
+            "Subnet2": {
+                "CIDR": "10.10.10.128/25"
+            }
+        },
+        "UserConfig": {
+            "Login": {
+                "Name": "student",
+                "Pass": "password"
+            }
+        }
+    },
+    "Resources": {
+        "CAfargatelab": {
+            "Type": "AWS::S3::Bucket",
+            "Properties": {
+                "AccessControl": "PublicRead"
+            }
+        },
+        "S3Copy": {
+            "Type": "Custom::CopyToS3",
+            "Properties": {
+                "ServiceToken": {
+                    "Fn::GetAtt": [
+                        "CopyFilesToS3",
+                        "Arn"
+                    ]
+                },
+                "S3BucketName": {
+                    "Ref": "CAfargatelab"
+                },
+                "SourceBucket": "clouda-labs-assets",
+                "Objects": [
+                    "fargate-lab/fargatelab.zip"
+                ]
+            }
+        },
+        "CopyFilesToS3": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+                "Handler": "index.lambda_handler",
+                "Role": {
+                    "Fn::GetAtt": [
+                        "LambdaExecutionRole",
+                        "Arn"
+                    ]
+                },
+                "Code": {
+                    "ZipFile": {
+                        "Fn::Join": [
+                            "\n",
+                            [
+                                "",
+                                "import json",
+                                "import boto3",
+                                "import cfnresponse",
+                                "",
+                                "print('Loading function')",
+                                "",
+                                "s3 = boto3.resource('s3')",
+                                "",
+                                "",
+                                "def copy_to_s3(key, source_bucket, bucket):",
+                                "    copy_source = { 'Bucket': source_bucket, 'Key': key }",
+                                "    dest_bucket = s3.Bucket(bucket)",
+                                "    dest_object = dest_bucket.Object(key)",
+                                "    dest_object.copy(copy_source)",
+                                "",
+                                "",
+                                "def lambda_handler(event, context):",
+                                "    print('Received event: ' + json.dumps(event, indent=2))",
+                                "",
+                                "    if event['RequestType'] == 'Create':",
+                                "        # get the properties set in the CloudFormation resource",
+                                "        properties = event['ResourceProperties']",
+                                "        objects = properties['Objects']",
+                                "        bucket = properties['S3BucketName']",
+                                "        source_bucket = properties['SourceBucket']",
+                                "",
+                                "        try:",
+                                "            for key in objects:",
+                                "                copy_to_s3(key, source_bucket, bucket)",
+                                "",
+                                "        except Exception as e:",
+                                "            print(e)",
+                                "            cfnresponse.send(event, context, cfnresponse.FAILED, {",
+                                "                             'Response': 'Failure'})",
+                                "            return",
+                                "",
+                                "    cfnresponse.send(event, context, cfnresponse.SUCCESS, {'Response': 'Success'})",
+                                ""
+                            ]
+                        ]
+                    }
+                },
+                "Runtime": "python3.6",
+                "Timeout": 60
+            }
+        },
+        "LambdaExecutionRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "lambda.amazonaws.com"
+                                ]
+                            },
+                            "Action": [
+                                "sts:AssumeRole"
+                            ]
+                        }
+                    ]
+                },
+                "Path": "/",
+                "Policies": [
+                    {
+                        "PolicyName": "root",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "logs:*"
+                                    ],
+                                    "Resource": "arn:aws:logs:*:*:*"
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "s3:*"
+                                    ],
+                                    "Resource": "*"
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        "UsingECSLabVPC": {
+            "Type": "AWS::EC2::VPC",
+            "Properties": {
+                "CidrBlock": {
+                    "Fn::FindInMap": [
+                        "Subnets",
+                        "VPC",
+                        "CIDR"
+                    ]
+                },
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": {
+                            "Ref": "AWS::StackName"
+                        }
+                    }
+                ]
+            }
+        },
+        "UsingECSLabPublicSubnet001": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "UsingECSLabVPC"
+                },
+                "CidrBlock": {
+                    "Fn::FindInMap": [
+                        "Subnets",
+                        "Subnet1",
+                        "CIDR"
+                    ]
+                },
+                "AvailabilityZone": "us-west-2a",
+                "Tags": [
+                    {
+                        "Key": "Network",
+                        "Value": "Public"
+                    }
+                ]
+            }
+        },
+        "UsingECSLabPublicSubnet002": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "UsingECSLabVPC"
+                },
+                "CidrBlock": {
+                    "Fn::FindInMap": [
+                        "Subnets",
+                        "Subnet2",
+                        "CIDR"
+                    ]
+                },
+                "AvailabilityZone": "us-west-2b",
+                "Tags": [
+                    {
+                        "Key": "Network",
+                        "Value": "Public"
+                    }
+                ]
+            }
+        },
+        "UsingECSLabInternetGateway": {
+            "Type": "AWS::EC2::InternetGateway"
+        },
+        "UsingECSLabInternetGatewayAttach": {
+            "Type": "AWS::EC2::VPCGatewayAttachment",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "UsingECSLabVPC"
+                },
+                "InternetGatewayId": {
+                    "Ref": "UsingECSLabInternetGateway"
+                }
+            }
+        },
+        "UsingECSLabPublicRouteTable": {
+            "Type": "AWS::EC2::RouteTable",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "UsingECSLabVPC"
+                }
+            }
+        },
+        "UsingECSLabPublicRoute": {
+            "Type": "AWS::EC2::Route",
+            "Properties": {
+                "RouteTableId": {
+                    "Ref": "UsingECSLabPublicRouteTable"
+                },
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "GatewayId": {
+                    "Ref": "UsingECSLabInternetGateway"
+                }
+            }
+        },
+        "UsingECSLabPublicRouteTableAssociation001": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "UsingECSLabPublicSubnet001"
+                },
+                "RouteTableId": {
+                    "Ref": "UsingECSLabPublicRouteTable"
+                }
+            }
+        },
+        "UsingECSLabPublicRouteTableAssociation002": {
+            "Type": "AWS::EC2::SubnetRouteTableAssociation",
+            "Properties": {
+                "SubnetId": {
+                    "Ref": "UsingECSLabPublicSubnet002"
+                },
+                "RouteTableId": {
+                    "Ref": "UsingECSLabPublicRouteTable"
+                }
+            }
+        },
+        "UsingECSLabSecurityGroup": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Using ECS Lab",
+                "VpcId": {
+                    "Ref": "UsingECSLabVPC"
+                },
+                "SecurityGroupIngress": [
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "80",
+                        "ToPort": "80",
+                        "CidrIp": "0.0.0.0/0"
+                    },
+                    {
+                        "IpProtocol": "tcp",
+                        "FromPort": "8081",
+                        "ToPort": "8081",
+                        "CidrIp": "0.0.0.0/0"
+                    }
+                ],
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "UsingECSLab"
+                    }
+                ]
+            }
+        },
+        "UsingECSLabSecurityGroupIngress": {
+            "Type": "AWS::EC2::SecurityGroupIngress",
+            "DependsOn": "UsingECSLabSecurityGroup",
+            "Properties": {
+                "GroupId": {
+                    "Ref": "UsingECSLabSecurityGroup"
+                },
+                "IpProtocol": "tcp",
+                "FromPort": "0",
+                "ToPort": "65535",
+                "SourceSecurityGroupId": {
+                    "Ref": "UsingECSLabSecurityGroup"
+                }
+            }
+        },
+        "CodeBuildServiceRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "codebuild.amazonaws.com"
+                                ]
+                            },
+                            "Action": [
+                                "sts:AssumeRole"
+                            ]
+                        }
+                    ]
+                },
+                "Path": "/",
+                "RoleName": "CodeBuildServiceRole"
+            }
+        },
+        "RolePolicy": {
+            "Type": "AWS::IAM::Policy",
+            "Properties": {
+                "PolicyName": "CodeBuildServicePolicy",
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "ecr:GetAuthorizationToken",
+                                "ecr:BatchCheckLayerAvailability",
+                                "ecr:GetDownloadUrlForLayer",
+                                "ecr:GetRepositoryPolicy",
+                                "ecr:DescribeRepositories",
+                                "ecr:ListImages",
+                                "ecr:DescribeImages",
+                                "ecr:BatchGetImage",
+                                "ecr:InitiateLayerUpload",
+                                "ecr:UploadLayerPart",
+                                "ecr:CompleteLayerUpload",
+                                "ecr:PutImage",
+                                "logs:CreateLogGroup",
+                                "logs:CreateLogStream",
+                                "logs:PutLogEvents",
+                                "s3:PutObject",
+                                "s3:GetObject",
+                                "s3:GetObjectVersion"
+                            ],
+                            "Resource": "*"
+                        }
+                    ]
+                },
+                "Roles": [
+                    {
+                        "Ref": "CodeBuildServiceRole"
+                    }
+                ]
+            }
+        },
+        "ecsTaskExcecution": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "ecs-tasks.amazonaws.com"
+                                ]
+                            },
+                            "Action": [
+                                "sts:AssumeRole"
+                            ]
+                        }
+                    ]
+                },
+                "Path": "/",
+                "RoleName": "ecsTaskExcecution"
+            }
+        },
+        "ecsExecuteRolePolicy": {
+            "Type": "AWS::IAM::Policy",
+            "Properties": {
+                "PolicyName": "ecsExecuteRolePolicy",
+                "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "ecr:GetAuthorizationToken",
+                                "ecr:BatchCheckLayerAvailability",
+                                "ecr:GetDownloadUrlForLayer",
+                                "ecr:BatchGetImage",
+                                "logs:CreateLogStream",
+                                "logs:PutLogEvents"
+                            ],
+                            "Resource": "*"
+                        }
+                    ]
+                },
+                "Roles": [
+                    {
+                        "Ref": "ecsTaskExcecution"
+                    }
+                ]
+            }
+        },
+        "ecsServiceRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "ecs.amazonaws.com"
+                                ]
+                            },
+                            "Action": [
+                                "sts:AssumeRole"
+                            ]
+                        }
+                    ]
+                },
+                "ManagedPolicyArns": [
+                    "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceRole"
+                ],
+                "Path": "/",
+                "RoleName": "ecsServiceRole"
+            }
+        },
+        "Group": {
+            "Type": "AWS::IAM::Group",
+            "Properties": {
+                "GroupName": "Students",
+                "Path": "/",
+                "Policies": [
+                    {
+                        "PolicyName": "students-policy",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Sid": "Stmt1499819535000",
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "ec2:Describe*",
+                                        "ec2:Get*",
+                                        "cloudformation:Describe*",
+                                        "cloudformation:Get*",
+                                        "cloudformation:List*",
+                                        "cloudformation:CreateStack",
+                                        "cloudformation:UpdateStack",
+                                        "cloudformation:DeleteStack",
+                                        "autoscaling:CreateLaunchConfiguration",
+                                        "autoscaling:CreateAutoScalingGroup",
+                                        "autoscaling:DeleteLaunchConfiguration",
+                                        "autoscaling:DeleteAutoScalingGroup",
+                                        "autoscaling:Update*",
+                                        "autoscaling:Describe*",
+                                        "application-autoscaling:Describe*",
+                                        "config:DescribeConfiguration*",
+                                        "waf-regional:GetWebACL*"
+                                    ],
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                },
+                                {
+                                    "Sid": "ECSPermissions",
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "ecs:CreateCluster",
+                                        "ecs:CreateService",
+                                        "ecs:Delete*",
+                                        "ecs:Deregister*",
+                                        "ecs:Describe*",
+                                        "ecs:DiscoverPollEndpoint",
+                                        "ecs:List*",
+                                        "ecs:Poll",
+                                        "ecs:RegisterContainerInstance",
+                                        "ecs:RegisterTaskDefinition",
+                                        "ecs:RunTask",
+                                        "ecs:StartTask",
+                                        "ecs:StopTask",
+                                        "ecs:StartTelemetrySession",
+                                        "ecs:SubmitContainerStateChange",
+                                        "ecs:SubmitTaskStateChange",
+                                        "ecs:UpdateContainerAgent",
+                                        "ecs:UpdateService"
+                                    ],
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                },
+                                {
+                                    "Sid": "OnlyAllowCertainInstanceTypesToBeCreated",
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "ec2:RunInstances"
+                                    ],
+                                    "Resource": [
+                                        "*"
+                                    ],
+                                    "Condition": {
+                                        "StringEquals": {
+                                            "ec2:InstanceType": "t2.micro"
+                                        }
+                                    }
+                                },
+                                {
+                                    "Sid": "Stmt1499819756000",
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "codebuild:BatchGet*",
+                                        "codebuild:CreateProject",
+                                        "codebuild:DeleteProject",
+                                        "codebuild:List*",
+                                        "codebuild:StartBuild",
+                                        "codebuild:StopBuild",
+                                        "codebuild:UpdateProject",
+                                        "codecommit:BatchGet*",
+                                        "codecommit:Get*",
+                                        "codecommit:List*",
+                                        "codecommit:Update*"
+                                    ],
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                },
+                                {
+                                    "Sid": "Stmt1499820124000",
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "s3:CreateBucket",
+                                        "s3:Delete*",
+                                        "s3:Get*",
+                                        "s3:List*",
+                                        "s3:PutBucket*",
+                                        "s3:PutObject*",
+                                        "s3:ReplicateDelete"
+                                    ],
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                },
+                                {
+                                    "Sid": "Stmt1499820350000",
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "cloudwatch:Describe*",
+                                        "cloudwatch:EnableAlarmActions",
+                                        "cloudwatch:GetMetric*",
+                                        "cloudwatch:ListMetrics",
+                                        "cloudwatch:PutMetric*",
+                                        "cloudwatch:SetAlarmState"
+                                    ],
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                },
+                                {
+                                    "Sid": "Stmt1499820411000",
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "logs:CreateLog*",
+                                        "logs:DeleteLog*",
+                                        "logs:Describe*",
+                                        "logs:DescribeMetricFilters",
+                                        "logs:GetLogEvents",
+                                        "logs:PutLogEvents",
+                                        "logs:PutMetricFilter"
+                                    ],
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                },
+                                {
+                                    "Sid": "Stmt1499820518000",
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "ecr:BatchCheckLayerAvailability",
+                                        "ecr:BatchDeleteImage",
+                                        "ecr:BatchGetImage",
+                                        "ecr:CreateRepository",
+                                        "ecr:DeleteRepository",
+                                        "ecr:Describe*",
+                                        "ecr:DeleteRepositoryPolicy",
+                                        "ecr:DescribeRepositories",
+                                        "ecr:GetRepositoryPolicy",
+                                        "ecr:ListImages",
+                                        "ecr:PutImage"
+                                    ],
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                },
+                                {
+                                    "Sid": "Stmt1499821585000",
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "elasticloadbalancing:AddTags",
+                                        "elasticloadbalancing:ApplySecurityGroupsToLoadBalancer",
+                                        "elasticloadbalancing:AttachLoadBalancerToSubnets",
+                                        "elasticloadbalancing:ConfigureHealthCheck",
+                                        "elasticloadbalancing:Create*",
+                                        "elasticloadbalancing:Delete*",
+                                        "elasticloadbalancing:Deregister*",
+                                        "elasticloadbalancing:Describe*",
+                                        "elasticloadbalancing:DetachLoadBalancerFromSubnets",
+                                        "elasticloadbalancing:DisableAvailabilityZonesForLoadBalancer",
+                                        "elasticloadbalancing:EnableAvailabilityZonesForLoadBalancer",
+                                        "elasticloadbalancing:Modify*",
+                                        "elasticloadbalancing:Register*",
+                                        "elasticloadbalancing:RemoveTags",
+                                        "elasticloadbalancing:Set*"
+                                    ],
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "iam:AttachRolePolicy",
+                                        "iam:List*",
+                                        "iam:PassRole",
+                                        "iam:Get*",
+                                        "iam:CreatePolicyVersion",
+                                        "iam:DeletePolicyVersion",
+                                        "iam:CreatePolicy"
+                                    ],
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "iam:CreateServiceLinkedRole",
+                                        "iam:PutRolePolicy"
+                                    ],
+                                    "Resource": "arn:aws:iam::*:role/aws-service-role/ecs.amazonaws.com/AWSServiceRoleForECS*",
+                                    "Condition": {
+                                        "StringLike": {
+                                            "iam:AWSServiceName": "ecs.amazonaws.com"
+                                        }
+                                    }
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "iam:CreateServiceLinkedRole",
+                                    "Resource": "arn:aws:iam::*:role/aws-service-role/elasticloadbalancing.amazonaws.com/AWSServiceRoleForElasticLoadBalancing*",
+                                    "Condition": {
+                                        "StringLike": {
+                                            "iam:AWSServiceName": "elasticloadbalancing.amazonaws.com"
+                                        }
+                                    }
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "iam:PutRolePolicy",
+                                    "Resource": "arn:aws:iam::*:role/aws-service-role/elasticloadbalancing.amazonaws.com/AWSServiceRoleForElasticLoadBalancing*"
+                                },
+                                {
+                                    "Effect": "Deny",
+                                    "Action": [
+                                        "ec2:ModifyInstanceAttribute",
+                                        "ec2:*Reserved*",
+                                        "ec2:*Spot*",
+                                        "ec2:*Host*",
+                                        "dynamodb:*Reserved*",
+                                        "rds:*Reserved*",
+                                        "elasticache:*Reserved*",
+                                        "redshift:*Reserved*",
+                                        "aws-marketplace:*"
+                                    ],
+                                    "Resource": [
+                                        "*"
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        "User": {
+            "Type": "AWS::IAM::User",
+            "DependsOn": "Group",
+            "Properties": {
+                "LoginProfile": {
+                    "Password": {
+                        "Fn::FindInMap": [
+                            "UserConfig",
+                            "Login",
+                            "Pass"
+                        ]
+                    }
+                },
+                "Path": "/",
+                "Groups": [
+                    "Students"
+                ],
+                "UserName": {
+                    "Fn::FindInMap": [
+                        "UserConfig",
+                        "Login",
+                        "Name"
+                    ]
+                }
+            }
+        }
+    }
+}
