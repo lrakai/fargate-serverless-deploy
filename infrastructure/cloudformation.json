@@ -656,13 +656,7 @@
                                 {
                                     "Effect": "Allow",
                                     "Action": [
-                                        "iam:AttachRolePolicy",
-                                        "iam:List*",
-                                        "iam:PassRole",
-                                        "iam:Get*",
-                                        "iam:CreatePolicyVersion",
-                                        "iam:DeletePolicyVersion",
-                                        "iam:CreatePolicy"
+                                        "iam:ListRoles"
                                     ],
                                     "Resource": [
                                         "*"
