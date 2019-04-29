@@ -480,12 +480,6 @@
                                     "Action": [
                                         "ec2:Describe*",
                                         "ec2:Get*",
-                                        "cloudformation:Describe*",
-                                        "cloudformation:Get*",
-                                        "cloudformation:List*",
-                                        "cloudformation:CreateStack",
-                                        "cloudformation:UpdateStack",
-                                        "cloudformation:DeleteStack",
                                         "autoscaling:CreateLaunchConfiguration",
                                         "autoscaling:CreateAutoScalingGroup",
                                         "autoscaling:DeleteLaunchConfiguration",
