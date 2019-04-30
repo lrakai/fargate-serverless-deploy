@@ -597,7 +597,8 @@
                                         "logs:DescribeMetricFilters",
                                         "logs:GetLogEvents",
                                         "logs:PutLogEvents",
-                                        "logs:PutMetricFilter"
+                                        "logs:PutMetricFilter",
+                                        "logs:FilterLogEvents"
                                     ],
                                     "Resource": [
                                         "*"
@@ -654,6 +655,50 @@
                                     ],
                                     "Resource": [
                                         "*"
+                                    ]
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "iam:PassRole"
+                                    ],
+                                    "Resource": [
+                                        {
+                                            "Fn::Join": [
+                                                "",
+                                                [
+                                                    "arn:aws:iam::",
+                                                    {
+                                                        "Ref": "AWS::AccountId"
+                                                    },
+                                                    ":role/CodeBuildServiceRole"
+                                                ]
+                                            ]
+                                        },
+                                        {
+                                            "Fn::Join": [
+                                                "",
+                                                [
+                                                    "arn:aws:iam::",
+                                                    {
+                                                        "Ref": "AWS::AccountId"
+                                                    },
+                                                    ":role/ecsTaskExcecution"
+                                                ]
+                                            ]
+                                        },
+                                        {
+                                            "Fn::Join": [
+                                                "",
+                                                [
+                                                    "arn:aws:iam::",
+                                                    {
+                                                        "Ref": "AWS::AccountId"
+                                                    },
+                                                    ":role/ecsServiceRole"
+                                                ]
+                                            ]
+                                        }
                                     ]
                                 },
                                 {
